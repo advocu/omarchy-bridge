@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.advocu.bridge",
   "name": "Bridge",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": "Suyash Verma",
   "description": "Single-player contract bridge with Rubber and Chicago scoring. You sit South.",
   "license": "Proprietary (all rights reserved)",

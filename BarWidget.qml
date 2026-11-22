@@ -56,22 +56,19 @@ BarWidget {
 
   // Remove / uninstall: the shell unloads the plugin (destroying this widget) and deletes its folder (or unlinks it, or
   // moves it to a backup). The hook reads bin/bridge into memory at once (the folder may be gone a moment later), then
-  // checks every 0.5 s for 30 s whether the plugin is still installed; when it is not, it runs that copy's `close`:
-  // the same graceful window close as the bar click (hl.dsp.window.close, so Chrome flushes the autosave), then TERM,
-  // then KILL 3 s later. "Installed" = the folder exists and, when the path QML gave us is outside
-  // ~/.config/omarchy/plugins but an entry there linked to it at unload (a symlink install resolved to its real
-  // path), that entry still resolves to it.
-  // A plain shell reload keeps the folder, so the game stays open. If the script could not be read, it falls back to
-  // TERM/KILL by profile (pkill -f; the flag is assembled at run time so this hook's own cmdline never matches).
+  // checks every 0.5 s for 30 s whether the plugin is still installed; when it is not, it runs that copy's `close`,
+  // which closes the game window only, exactly like the bar click: windows the user opened from the game's browser
+  // profile stay open, and no process is signalled. "Installed" = the folder exists and, when the path QML gave us is
+  // outside ~/.config/omarchy/plugins but an entry there linked to it at unload (a symlink install resolved to its real
+  // path), that entry still resolves to it. A plain shell reload keeps the folder, so the game stays open. If the
+  // script could not be read, the hook does nothing.
   Component.onDestruction: Quickshell.execDetached(["bash", "-c",
-    "s=$(cat \"$1/bin/bridge\" 2>/dev/null); d=${1%/}; p=${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/plugins; " +
+    "s=$(cat \"$1/bin/bridge\" 2>/dev/null); [ -n \"$s\" ] || exit 0; d=${1%/}; p=${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/plugins; " +
     "r=$(realpath -e \"$d\" 2>/dev/null); " +
     "lk() { for e in \"$p\"/*; do [ \"$(realpath -e \"$e\" 2>/dev/null)\" = \"$r\" ] && return 0; done; return 1; }; " +
     "v=0; case \"$d\" in \"$p\"/*) ;; *) lk && v=1 ;; esac; " +
     "on() { [ -d \"$d\" ] || return 1; [ $v = 0 ] || lk; }; " +
-    "for i in $(seq 60); do sleep 0.5; on && continue; [ -n \"$s\" ] && exec bash -c \"$s\" bridge close; " +
-    "f=--user-data-; f=\"${f}dir=${XDG_CACHE_HOME:-$HOME/.cache}/bridge/browser( |$)\"; " +
-    "pkill -TERM -f -- \"$f\" 2>/dev/null; sleep 3; pkill -KILL -f -- \"$f\" 2>/dev/null; exit 0; done; true",
+    "for i in $(seq 60); do sleep 0.5; on && continue; exec bash -c \"$s\" bridge close; done; true",
     "bridge-remove", root.pluginDir])
 
   Timer { interval: 5000; running: true; repeat: true; triggeredOnStart: true; onTriggered: root.refresh() }

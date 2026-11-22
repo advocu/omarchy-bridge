@@ -33,13 +33,13 @@ omarchy-shell bridge toggle
 
 ## Remove
 
-Close the game window first, then run:
+Run:
 
 ```
 omarchy plugin remove io.github.advocu.bridge
 ```
 
-Removing the plugin leaves your saved settings and scores in `~/.cache/bridge`, and a small runtime folder in `$XDG_RUNTIME_DIR/bridge`. Delete them by hand if you want them gone:
+If the game is open, removing the plugin closes the game window. Removing it leaves your saved settings and scores in `~/.cache/bridge`, and a small runtime folder in `$XDG_RUNTIME_DIR/bridge`. Delete them by hand if you want them gone:
 
 ```
 rm -rf ~/.cache/bridge "$XDG_RUNTIME_DIR/bridge"
@@ -69,6 +69,7 @@ Your game is saved as you play, so you can close the window and pick up where yo
 - Opens `game/index.html` (a single self-contained file) in a Chromium app window, with its own browser profile in `~/.cache/bridge/browser`.
 - Turns off the browser's background network services for that profile.
 - Uses `hyprctl` to float and centre its own window. It doesn't touch your Hyprland config or any other window.
+- Closing Bridge, from the bar or by removing the plugin, closes only the game window. If you opened another browser window from the game (for example with `Ctrl+N`), that window stays open. Bridge never kills or signals any process.
 - Writes nothing outside `~/.cache/bridge` and `$XDG_RUNTIME_DIR/bridge`.
 
 ## License
