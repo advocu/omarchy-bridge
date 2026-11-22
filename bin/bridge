@@ -1,0 +1,147 @@
+#!/bin/bash
+# Bridge launcher for the Omarchy bar widget.
+# Usage: bridge open|close|toggle|status
+#
+# Opens game/index.html (one self-contained file) in a Chromium-family browser app window straight from file://.
+# No server, no listener, no network: the game needs nothing outside that file. The browser gets its own profile
+# under ${XDG_CACHE_HOME:-~/.cache}/bridge/browser (settings and scores live there) and its background network
+# services are switched off. No sudo, no packages, nothing written outside that cache dir and $XDG_RUNTIME_DIR/bridge.
+
+set -u
+
+HERE=$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)
+GAME="$HERE/game/index.html"
+CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/bridge"
+PROFILE="$CACHE/browser"
+RUN="${XDG_RUNTIME_DIR:-$CACHE/run}/bridge"
+PIDFILE="$RUN/browser.pid"
+
+note() {
+  echo "bridge: $*" >&2
+  command -v notify-send >/dev/null 2>&1 && notify-send -a Bridge "Bridge" "$*" >/dev/null 2>&1 || true
+}
+
+# Every process of our browser: any process whose command line names our profile. Chromium rewrites its own
+# /proc/<pid>/cmdline into one space-joined string ~0.3 s after start (setproctitle); pgrep -f joins NUL-split argv
+# with spaces too, so one regex covers both forms. The flag must be followed by a space or the end, so a sibling
+# profile (browser-old) never matches. One pgrep per call: no per-process /proc reads (cheap enough for the bar's
+# 5 s status poll) and nothing to race with a process that exits mid-scan (no "/proc/N/cmdline" errors).
+PROFILE_RE="--user-data-dir=$(printf '%s' "$PROFILE" | sed 's/[][\.*^$+?(){}|]/\\&/g')( |$)"
+profile_pids() { pgrep -f -- "$PROFILE_RE" 2>/dev/null; }
+
+# The browser's main process (the one Hyprland reports as the window's pid): the pid file if it still names our
+# profile, else the oldest process of our profile (renderers/zygotes are started after it).
+live_pid() {
+  local pids pid
+  pids=$(profile_pids) || return 1
+  if [[ -f $PIDFILE ]]; then
+    pid=$(<"$PIDFILE")
+    grep -qx -- "$pid" <<<"$pids" && { echo "$pid"; return 0; }
+  fi
+  pgrep -o -f -- "$PROFILE_RE" 2>/dev/null || head -n1 <<<"$pids"
+}
+
+# First Chromium-family browser on PATH. Omarchy installs chromium by default (install/omarchy-base.packages).
+find_browser() {
+  local b
+  for b in ${BRIDGE_BROWSER:-} chromium google-chrome-stable google-chrome brave helium-browser vivaldi-stable microsoft-edge-stable; do
+    command -v "$b" >/dev/null 2>&1 && { command -v "$b"; return 0; }
+  done
+  return 1
+}
+
+open_window() {
+  if live_pid >/dev/null; then
+    focus_window "$(live_pid)"
+    return 0
+  fi
+  [[ -f $GAME ]] || { note "game file missing: $GAME"; return 1; }
+  local browser
+  browser=$(find_browser) || { note "Bridge needs Chromium (part of the default Omarchy install) or another Chromium-based browser"; return 1; }
+  mkdir -p "$PROFILE" "$RUN" && chmod 700 "$CACHE" "$RUN"
+  setsid "$browser" \
+    "--app=file://$GAME?host=omarchy" \
+    --window-size=1280,800 \
+    "--user-data-dir=$PROFILE" \
+    --class=io.github.advocu.bridge \
+    --no-first-run --no-default-browser-check \
+    --disable-background-networking --disable-component-update --disable-sync \
+    --disable-domain-reliability --no-pings --disable-features=Translate,MediaRouter,OptimizationHints \
+    --autoplay-policy=no-user-gesture-required \
+    >/dev/null 2>&1 </dev/null &
+  echo $! >"$PIDFILE"
+  place_window "$!" >/dev/null 2>&1 </dev/null &
+}
+
+# Window placement: floating, centred, 1280x800, out of the chromium-based-browser tag (whose rule tiles it).
+# A plugin cannot add Hyprland rules without editing the user's config, so this applies the same result at runtime
+# to our own window only, with the dispatchers Omarchy's own bin/omarchy-hyprland-window-pop uses.
+hypr() { hyprctl dispatch "$1" >/dev/null 2>&1 || { shift; hyprctl dispatch "$@" >/dev/null 2>&1; }; }
+place_window() {
+  command -v hyprctl >/dev/null 2>&1 && command -v jq >/dev/null 2>&1 || return 0
+  local pid=$1 addr="" floating i
+  for ((i = 0; i < 100; i++)); do
+    addr=$(hyprctl clients -j 2>/dev/null | jq -r --argjson p "$pid" 'map(select(.pid == $p)) | .[0].address // empty')
+    [[ -n $addr ]] && break
+    sleep 0.1
+  done
+  [[ -n $addr ]] || return 0
+  local w="address:$addr"
+  hypr "hl.dsp.window.tag({ window = \"$w\", tag = \"-chromium-based-browser\" })" tagwindow -chromium-based-browser "$w"
+  floating=$(hyprctl clients -j 2>/dev/null | jq -r --arg a "$addr" 'map(select(.address == $a)) | .[0].floating')
+  [[ $floating == true ]] || hypr "hl.dsp.window.float({ window = \"$w\", action = \"toggle\" })" togglefloating "$w"
+  hypr "hl.dsp.window.resize({ window = \"$w\", x = 1280, y = 800 })" resizewindowpixel "exact 1280 800,$w"
+  hypr "hl.dsp.window.center({ window = \"$w\" })" centerwindow
+}
+
+# Raise our window: find it by pid in `hyprctl clients -j`, then the Lua dispatch form Omarchy 4.x accepts
+# (hl.dsp.focus({ window = ... })). Best effort only; nothing depends on it.
+focus_window() {
+  command -v hyprctl >/dev/null 2>&1 && command -v jq >/dev/null 2>&1 || return 0
+  local addr
+  addr=$(hyprctl clients -j 2>/dev/null | jq -r --argjson p "${1:-0}" 'map(select(.pid == $p)) | .[0].address // empty')
+  [[ -n $addr ]] && hyprctl dispatch "hl.dsp.focus({ window = \"address:$addr\" })" >/dev/null 2>&1
+  return 0
+}
+
+# Wait until none of our profile's processes is left, or until $1 seconds have passed. Returns 0 when all are gone.
+wait_gone() {
+  local until=$(( ${EPOCHREALTIME//[!0-9]/} + ${1}000000 ))
+  while profile_pids >/dev/null; do
+    (( ${EPOCHREALTIME//[!0-9]/} >= until )) && return 1
+    sleep 0.1
+  done
+  return 0
+}
+
+# Close: a signal, even TERM to the main process, makes Chrome drop the last few seconds of
+# localStorage writes, so Continue would resume 1-2 tricks back. So first ask Hyprland to close our window(s)
+# gracefully (hl.dsp.window.close, the Lua form of the old killactive: the same path as the window's own close
+# button), found in `hyprctl clients -j` by any pid of our profile. Chrome then shuts down normally and flushes its
+# storage. Only if it is still running after BRIDGE_GRACE_S (default 5 s), or there is no Hyprland: TERM to every
+# process of the profile, then KILL whatever is left 3 s later.
+close_window() {
+  local pids addrs a
+  pids=$(profile_pids) || { rm -f "$PIDFILE"; return 0; }
+  if command -v hyprctl >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
+    addrs=$(hyprctl clients -j 2>/dev/null | jq -r --argjson ps "[$(paste -sd, <<<"$pids")]" \
+      '.[] | select(.pid as $p | $ps | index($p)) | .address' 2>/dev/null)
+    for a in $addrs; do
+      hyprctl dispatch "hl.dsp.window.close({ window = \"address:$a\" })" >/dev/null 2>&1
+    done
+    [[ -n $addrs ]] && wait_gone "${BRIDGE_GRACE_S:-5}" && { rm -f "$PIDFILE"; return 0; }
+  fi
+  pids=$(profile_pids) && kill -TERM $pids 2>/dev/null
+  wait_gone 3 || { pids=$(profile_pids) && kill -KILL $pids 2>/dev/null; }
+  rm -f "$PIDFILE"
+  return 0
+}
+
+case "${1:-toggle}" in
+  open) open_window ;;
+  close) close_window ;;
+  toggle) if live_pid >/dev/null; then close_window; else open_window; fi ;;
+  status) live_pid >/dev/null ;;
+  -h | --help) echo "Usage: bridge open|close|toggle|status" ;;
+  *) echo "Usage: bridge open|close|toggle|status" >&2; exit 2 ;;
+esac
