@@ -2,26 +2,18 @@
   "schemaVersion": 1,
   "id": "io.github.advocu.bridge",
   "name": "Bridge",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "author": "Suyash Verma",
   "description": "Single-player contract bridge with Rubber and Chicago scoring. You sit South.",
   "license": "Proprietary (all rights reserved)",
-  "kinds": [
-    "bar-widget"
-  ],
-  "entryPoints": {
-    "barWidget": "BarWidget.qml"
-  },
+  "kinds": ["bar-widget"],
+  "entryPoints": { "barWidget": "BarWidget.qml" },
   "barWidget": {
     "displayName": "Bridge",
     "description": "A bridge table in the bar; click it to open or close the Bridge table.",
     "category": "Other",
     "defaultSection": "right",
     "allowMultiple": false,
-    "aliases": [
-      "bridge",
-      "cards",
-      "contract bridge"
-    ]
+    "aliases": ["bridge", "cards", "contract bridge"]
   }
 }

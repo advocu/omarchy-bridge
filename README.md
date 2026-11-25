@@ -39,7 +39,7 @@ Run:
 omarchy plugin remove io.github.advocu.bridge
 ```
 
-If the game is open, removing the plugin closes the game window. Removing it leaves your saved settings and scores in `~/.cache/bridge`, and a small runtime folder in `$XDG_RUNTIME_DIR/bridge`. Delete them by hand if you want them gone:
+If the game is open, removing the plugin closes the game window. It also deletes the Contract Bridge launcher entry. Your saved settings and scores stay in `~/.cache/bridge`, and a small runtime folder stays in `$XDG_RUNTIME_DIR/bridge`. Delete them by hand if you want them gone:
 
 ```
 rm -rf ~/.cache/bridge "$XDG_RUNTIME_DIR/bridge"
@@ -62,7 +62,11 @@ Your game is saved as you play, so you can close the window and pick up where yo
 | Input | Action |
 |---|---|
 | Click | Make a call or play a card |
-| `Esc` | Close the scorepad details |
+| `Esc` | Close Last trick, Details or Options, or open Options from the table |
+| `L` | Open or close Last trick |
+| `A` | Open or close Details, with the whole auction |
+| Enter or Space | Choose the focused control |
+| Arrow keys | Move between legal bids, when the bidding box is focused |
 
 ## What it does on your system
 
@@ -70,7 +74,7 @@ Your game is saved as you play, so you can close the window and pick up where yo
 - Turns off the browser's background network services for that profile.
 - Uses `hyprctl` to float and centre its own window. It doesn't touch your Hyprland config or any other window.
 - Closing Bridge, from the bar or by removing the plugin, closes only the game window. If you opened another browser window from the game (for example with `Ctrl+N`), that window stays open. Bridge never kills or signals any process.
-- Writes nothing outside `~/.cache/bridge` and `$XDG_RUNTIME_DIR/bridge`.
+- Writes nothing outside `~/.cache/bridge`, `$XDG_RUNTIME_DIR/bridge` and its launcher entry, `~/.local/share/applications/io.github.advocu.bridge.desktop`. Removing the plugin deletes the launcher entry.
 
 ## License
 
@@ -78,10 +82,11 @@ Copyright (C) 2026 Suyash Verma. All rights reserved.
 
 Bridge is free to install and play through Omarchy, but it is not open source. You may not copy, modify or redistribute it. See `LICENSE`.
 
-The music and the font keep their own licences. See `LICENSES.md`.
+The music and the fonts, Nunito and Playfair Display, keep their own licences. See `LICENSES.md`.
 
 ## Credits
 
 - Game: Suyash Verma
 - Music: "jazz improvisation looped" by Alex McCulloch (Pro Sensory), CC0. "Jazzy blues" by LushoGames, CC0. Both via OpenGameArt.org.
 - Font: Nunito, SIL Open Font License 1.1 (full text in `OFL-Nunito.txt`)
+- Font: Playfair Display Black, SIL Open Font License 1.1 (full text in `OFL-PlayfairDisplay.txt`)

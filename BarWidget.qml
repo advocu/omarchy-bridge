@@ -61,14 +61,23 @@ BarWidget {
   // profile stay open, and no process is signalled. "Installed" = the folder exists and, when the path QML gave us is
   // outside ~/.config/omarchy/plugins but an entry there linked to it at unload (a symlink install resolved to its real
   // path), that entry still resolves to it. A plain shell reload keeps the folder, so the game stays open. If the
-  // script could not be read, the hook does nothing.
+  // script could not be read, the hook does nothing to the game.
+  // v1.1 item 11: before the close it deletes the app-launcher entry, but only the one that names this folder
+  // (bin/bridge launcher-remove; if the script could not be read, the same marker check inline). A reload keeps it.
+  // v1.1 item 11 (copy.md §23): the app-launcher entry, written (or left as is when unchanged) each time the widget
+  // loads, into ~/.local/share/applications. The Omarchy plugin schema has no launcher API.
+  Component.onCompleted: Quickshell.execDetached(["bash", root.launcher, "launcher-install", root.pluginDir])
+
   Component.onDestruction: Quickshell.execDetached(["bash", "-c",
-    "s=$(cat \"$1/bin/bridge\" 2>/dev/null); [ -n \"$s\" ] || exit 0; d=${1%/}; p=${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/plugins; " +
+    "s=$(cat \"$1/bin/bridge\" 2>/dev/null); d=${1%/}; p=${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/plugins; " +
     "r=$(realpath -e \"$d\" 2>/dev/null); " +
     "lk() { for e in \"$p\"/*; do [ \"$(realpath -e \"$e\" 2>/dev/null)\" = \"$r\" ] && return 0; done; return 1; }; " +
     "v=0; case \"$d\" in \"$p\"/*) ;; *) lk && v=1 ;; esac; " +
     "on() { [ -d \"$d\" ] || return 1; [ $v = 0 ] || lk; }; " +
-    "for i in $(seq 60); do sleep 0.5; on && continue; exec bash -c \"$s\" bridge close; done; true",
+    "e=${XDG_DATA_HOME:-$HOME/.local/share}/applications/io.github.advocu.bridge.desktop; " +
+    "for i in $(seq 60); do sleep 0.5; on && continue; " +
+    "if [ -n \"$s\" ]; then bash -c \"$s\" bridge launcher-remove \"$d\"; exec bash -c \"$s\" bridge close; fi; " +
+    "grep -qxF -- \"X-Bridge-Plugin-Dir=$d\" \"$e\" 2>/dev/null && rm -f \"$e\"; exit 0; done; true",
     "bridge-remove", root.pluginDir])
 
   Timer { interval: 5000; running: true; repeat: true; triggeredOnStart: true; onTriggered: root.refresh() }

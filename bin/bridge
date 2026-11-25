@@ -1,11 +1,12 @@
 #!/bin/bash
 # Bridge launcher for the Omarchy bar widget.
-# Usage: bridge open|close|toggle|status
+# Usage: bridge open|close|toggle|status|launcher-install|launcher-remove [plugin-dir]
 #
 # Opens game/index.html (one self-contained file) in a Chromium-family browser app window straight from file://.
 # No server, no listener, no network: the game needs nothing outside that file. The browser gets its own profile
 # under ${XDG_CACHE_HOME:-~/.cache}/bridge/browser (settings and scores live there) and its background network
-# services are switched off. No sudo, no packages, nothing written outside that cache dir and $XDG_RUNTIME_DIR/bridge.
+# services are switched off. No sudo, no packages, nothing written outside that cache dir and $XDG_RUNTIME_DIR/bridge,
+# except the app-launcher entry (v1.1 item 11, below) in ${XDG_DATA_HOME:-~/.local/share}/applications.
 # It only ever acts on the one game window it opened (see close_window); it never signals or kills a process.
 
 set -u
@@ -130,11 +131,52 @@ close_window() {
   return 0
 }
 
+# App-launcher entry (v1.1 item 11, copy.md §23). The Omarchy plugin schema has no launcher kind or API (kinds: bar,
+# bar-widget, menu, overlay, panel, service), so the widget writes a freedesktop entry into the user's own
+# applications folder when it loads and the removal hook deletes it. Nothing outside ${XDG_DATA_HOME:-~/.local/share}.
+# The entry names its plugin folder (X-Bridge-Plugin-Dir); remove deletes only an entry that names the same folder.
+APPS="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+ENTRY="$APPS/io.github.advocu.bridge.desktop"
+de_arg() { local v=${1//\\/\\\\}; v=${v//\"/\\\"}; v=${v//\$/\\\$}; v=${v//\`/\\\`}; v=${v//%/%%}; v=${v//\\/\\\\}; printf '"%s"' "$v"; } # quoting rule, then the string-escape rule (spec: \\\\ for one \)
+launcher_install() {
+  local dir=${1:-$HERE} tmp
+  dir=${dir%/}
+  [[ $dir == /* && $dir != *$'\n'* ]] || return 1
+  mkdir -p "$APPS" || return 1
+  tmp=$(mktemp "$APPS/.io.github.advocu.bridge.XXXXXX") || return 1
+  cat >"$tmp" <<DESKTOP
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=Contract Bridge
+Comment=Single-player contract bridge with Rubber and Chicago scoring
+Keywords=bridge;contract bridge;cards;card game;rubber;chicago;
+Exec=bash $(de_arg "$dir/bin/bridge") open
+TryExec=bash
+Icon=$dir/icon/io.github.advocu.bridge.svg
+Terminal=false
+Categories=Game;CardGame;
+StartupWMClass=io.github.advocu.bridge
+X-Bridge-Plugin-Dir=$dir
+DESKTOP
+  chmod 644 "$tmp"
+  if cmp -s "$tmp" "$ENTRY"; then rm -f "$tmp"; else mv -f "$tmp" "$ENTRY"; fi
+}
+launcher_remove() {
+  local dir=${1:-$HERE}
+  dir=${dir%/}
+  [[ -f $ENTRY ]] || return 0
+  grep -qxF -- "X-Bridge-Plugin-Dir=$dir" "$ENTRY" && rm -f "$ENTRY"
+  return 0
+}
+
 case "${1:-toggle}" in
   open) open_window ;;
   close) close_window ;;
   toggle) if game_open; then close_window; else open_window; fi ;;
   status) game_open ;;
-  -h | --help) echo "Usage: bridge open|close|toggle|status" ;;
-  *) echo "Usage: bridge open|close|toggle|status" >&2; exit 2 ;;
+  launcher-install) launcher_install "${2:-}" ;;
+  launcher-remove) launcher_remove "${2:-}" ;;
+  -h | --help) echo "Usage: bridge open|close|toggle|status|launcher-install|launcher-remove [plugin-dir]" ;;
+  *) echo "Usage: bridge open|close|toggle|status|launcher-install|launcher-remove [plugin-dir]" >&2; exit 2 ;;
 esac
